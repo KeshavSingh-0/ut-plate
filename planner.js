@@ -59,12 +59,14 @@
       return { distinct, servings, bias };
     };
     const idx = {}; cands.forEach((c, i) => { idx[c.id] = i; });
+    const floor = c => c.min || 0;
     const score = () => {
       const s = total();
       return cost(tot, tgt) + 0.04 * Math.max(0, s.distinct - 3) + 0.004 * s.servings + s.bias
         + (s.distinct > maxDistinct ? 1 : 0);
     };
     const apply = (c, d) => { qty.set(c.id, (qty.get(c.id) || 0) + d); addInto(tot, c.n, d); };
+    for (const c of cands) if (floor(c) > 0) apply(c, floor(c));   // the user's own starter dishes stay as chosen
     let best = score();
 
     for (let iter = 0; iter < 200; iter++) {
@@ -72,11 +74,11 @@
       for (const c of cands) {
         const q = qty.get(c.id) || 0;
         if (q < c.cap) { apply(c, 1); const s = score(); if (s < moveScore - 1e-9) { moveScore = s; move = [[c, 1]]; } apply(c, -1); }
-        if (q > 0) { apply(c, -1); const s = score(); if (s < moveScore - 1e-9) { moveScore = s; move = [[c, -1]]; } apply(c, 1); }
+        if (q > floor(c)) { apply(c, -1); const s = score(); if (s < moveScore - 1e-9) { moveScore = s; move = [[c, -1]]; } apply(c, 1); }
       }
       if (!move) {   // try swapping one portion of a chosen item for another item
         for (const a of cands) {
-          if (!(qty.get(a.id) > 0)) continue;
+          if (!(qty.get(a.id) > floor(a))) continue;
           apply(a, -1);
           for (const b of cands) {
             if (b === a || (qty.get(b.id) || 0) >= b.cap) continue;
@@ -97,21 +99,37 @@
   // Simple seeded random so "Swap" gives repeatable alternatives.
   function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
+  // Dishes the planner may use. `opts.starter` ({id: qty}) holds the user's own picks: they are kept exactly as
+  // chosen and the rest of the plate is filled in around them. `opts.ban` ids are never suggested.
+  function eligible(it, id, opts) {
+    const icons = it.icons || [];
+    if (!it.dessert && !icons.includes("veggie") && !icons.includes("vegan")) return false;
+    if (opts.noEggs && icons.includes("eggs")) return false;
+    if (opts.hidden && opts.hidden.has(id)) return false;
+    if (opts.ban && opts.ban.has(id)) return false;
+    return !!(it.n && it.n[0] > 0);
+  }
   function candidates(menuEntries, items, opts) {
+    opts = opts || {};
     const seen = new Set(), out = [];
     const r = rng(opts.seed || 1);
+    const starter = opts.starter || {};
+    const mk = (id, it, locked) => {
+      const avoid = opts.avoid && opts.avoid.has(id) ? 0.05 : 0;
+      const sweet = it.dessert ? 0.15 : 0;           // desserts are allowed, but rarely auto-picked
+      const cap = it.n[0] < 60 ? 4 : 3;
+      return { id, n: it.n, cap: locked ? starter[id] : cap, min: locked ? starter[id] : 0,
+        bias: locked ? 0 : (opts.seed > 1 ? r() * 0.06 : 0) + avoid + sweet };
+    };
     for (const e of menuEntries) {
       const it = items[e.id];
       if (!it || seen.has(e.id)) continue;
       seen.add(e.id);
-      const icons = it.icons || [];
-      if (!icons.includes("veggie") && !icons.includes("vegan")) continue;
-      if (opts.noEggs && icons.includes("eggs")) continue;
-      if (opts.hidden && opts.hidden.has(e.id)) continue;
-      if (!(it.n && it.n[0] > 0)) continue;
-      const avoid = opts.avoid && opts.avoid.has(e.id) ? 0.05 : 0;
-      out.push({ id: e.id, n: it.n, cap: it.n[0] < 60 ? 4 : 3, bias: (opts.seed > 1 ? r() * 0.06 : 0) + avoid });
+      if (starter[e.id] > 0) { out.push(mk(e.id, it, true)); continue; }
+      if (eligible(it, e.id, opts)) out.push(mk(e.id, it, false));
     }
+    for (const id of Object.keys(starter))                 // starter dishes that aren't on this hall's menu keep their place
+      if (!seen.has(id) && starter[id] > 0 && items[id]) out.push(mk(id, items[id], true));
     return out;
   }
 
@@ -124,7 +142,7 @@
     return out;
   }
 
-  const api = { KEYS, LABELS, UNITS, KIND, PLAN_A, PLAN_B, planWeek, dailyTarget, sumPlate, addInto, zero,
+  const api = { eligible, KEYS, LABELS, UNITS, KIND, PLAN_A, PLAN_B, planWeek, dailyTarget, sumPlate, addInto, zero,
     cost, optimize, candidates, mealTargets };
   if (typeof module !== "undefined") module.exports = api; else root.Planner = api;
 })(this);

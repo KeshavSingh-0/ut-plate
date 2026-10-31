@@ -1,6 +1,6 @@
 """Scrape J2, JCL and Kins Dining menus and nutrition labels from UT FoodPro into data/menu.json.
 
-Runs daily in GitHub Actions. Keeps only vegetarian/vegan items (Veggie or Vegan icon)
+Runs daily in GitHub Actions. Keeps vegetarian/vegan items (Veggie or Vegan icon) plus meat-free desserts
 and caches nutrition labels by recipe+portion so repeat items are fetched once.
 Usage:  python scrape.py            # normal run
         python scrape.py --debug    # also saves raw HTML to debug/ for troubleshooting
@@ -33,6 +33,19 @@ CACHE = "data/labels_cache.json"
 DEBUG = "--debug" in sys.argv
 KEEP_DAYS_BACK = 1          # keep yesterday so late-night checks still work
 VEG_ICONS = {"veggie", "vegan"}
+MEAT_ICONS = {"beef", "pork", "fish", "shellfish", "poultry", "chicken"}
+
+
+def is_dessert_station(station):
+    return "dessert" in station.lower()
+
+
+def keep_item(it):
+    """Vegetarian/vegan icon, or a dessert with no meat flag (UT leaves the Veggie icon off many desserts)."""
+    icons = set(it["icons"])
+    if VEG_ICONS & icons:
+        return True
+    return is_dessert_station(it["station"]) and not (MEAT_ICONS & icons)
 
 S = requests.Session()
 S.headers["User-Agent"] = "ut-plate personal meal planner (student project)"
@@ -166,7 +179,7 @@ def main():
                 save_debug(f"{num}_{iso}_{meal}.html", page)
                 entries = []
                 for it in parse_longmenu(page):
-                    if not VEG_ICONS & set(it["icons"]):
+                    if not keep_item(it):
                         continue
                     rec = it["rec"]
                     if rec not in cache or not cache[rec].get("ok"):
@@ -175,6 +188,8 @@ def main():
                             save_debug(f"label_{rec.replace('*', '_').replace('/', '-')}.html", lab)
                         cache[rec] = parse_label(lab)
                     items[rec] = {"name": it["name"], "icons": it["icons"], **cache[rec]}
+                    if is_dessert_station(it["station"]):
+                        items[rec]["dessert"] = True
                     entries.append({"id": rec, "station": it["station"]})
                 if entries:
                     days.setdefault(iso, {}).setdefault(loc, {})[meal] = entries

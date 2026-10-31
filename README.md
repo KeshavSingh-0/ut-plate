@@ -6,7 +6,7 @@ The project has four parts:
 
 | File | What it does |
 | --- | --- |
-| `scrape.py` | Pulls the menus and nutrition labels for all three halls from UT FoodPro, keeping only vegetarian and vegan dishes |
+| `scrape.py` | Pulls the menus and nutrition labels for all three halls from UT FoodPro, keeping vegetarian and vegan dishes plus meat-free desserts |
 | `.github/workflows/scrape.yml` | A GitHub Action that runs the scraper twice a day and saves `data/menu.json` |
 | `index.html`, `planner.js` | The app itself, hosted free on GitHub Pages |
 | `sheet-sync.gs` | An optional Google Apps Script that writes eaten meals into your sheet's Food tab |
@@ -52,7 +52,9 @@ If you edit the script later, use **Deploy → Manage deployments → Edit → N
 - **I ate this** logs the meal. The meals left in the day are re-planned around whatever is still needed.
 - **Another option** gives a different plate.
 - **+ / −** change portions, and **×** hides a dish for good.
-- **Add a dish** logs something the app didn't suggest.
+- **Add a dish** is a dropdown grouped by the station each dish is served at (desserts last). Adding, changing or removing a dish makes your picks a starter, and the app fills the rest of that meal around them. **Stop filling** freezes the plate; **Fill in the rest** turns it back on.
+- Foods under **Outside the dining halls** only count for the day you add them. Tick "save it in my list" to reuse one on other days.
+- **This week** shows each day's calories, protein, fiber and sodium (green = goal met), how many days hit each goal, and **Adjust daily limits** lets you change any nutrient's limit for one day, from a day onward, or for every day.
 - Targets follow your 12-week plan. You can change the start date in Settings.
 
 ## If the update fails
